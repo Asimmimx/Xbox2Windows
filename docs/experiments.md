@@ -10436,6 +10436,34 @@ ctest --preset dev --no-tests=error -R '^(startup_image_sample_c|startup_sampler
 
 Not covered: a D3D12 readback of a translated comparison draw. The compared result for the same sampler words and the same HLSL call is read back on WARP by `tests/pixel_compare_check.py` for the pixel AOT path, but no draw runs the `gfx2hlsl.py` output with an `smpc` sampler yet; 2D array comparisons; explicit-level comparison (`image_sample_c_l`), which needs a provable constant level 0 or shader model 6.7.
 
+## Startup translator: three-source integer operations
+
+No check ran the three-source integer operations of the `VEC_U` table in `tools/startup/gfx2hlsl.py` before: `v_bfe_u32`, `v_mad_u32_u24`, `v_lshl_add_u32`, `v_add_lshl_u32`, `v_add3_u32`, `v_or3_b32`, `v_and_or_b32`, `v_lshl_or_b32`, `v_xad_u32` and `v_bfi_b32`. All ten are VOP3 only. `tests/startup_gfx2hlsl_int3_alu_check.py` draws them with the shared runner `tests/startup_gfx2hlsl_lane_alu.py`. Each draw applies one operation to each of four pixels' flat inputs and compares the four result words exactly.
+
+The references follow the AMD RDNA 2 ISA reference with plain integer arithmetic:
+- `v_bfe_u32` takes an unsigned field of width S2[4:0] at offset S1[4:0];
+- `v_mad_u32_u24` multiplies the low 24 bits of S0 and S1;
+- shift counts come from bits 4:0;
+- sums wrap at 32 bits;
+- `v_bfi_b32` is the insert `(S0 & S1) | (~S0 & S2)`.
+
+The inputs include shift counts and widths above 31, sources with bits above bit 23, and sums that wrap.
+
+Each operation also has a wrong lowering whose first draw must read its own mutated words:
+- the bfe mask without `- 1`;
+- a full-width first factor;
+- add and OR exchanged in the shift-add pair;
+- a 4-bit shift count;
+- `a + b - c` for `v_add3_u32`;
+- XOR for `v_or3_b32`;
+- XOR for the OR in `v_and_or_b32`;
+- OR for the XOR in `v_xad_u32`;
+- an insert without the complement.
+
+An earlier mutation masked the bfe width to 4 bits. FXC `ps_5_1` compiled that mutated shader to one that read all zeros on WARP, so the mutation no longer tests only the lowering, and it was replaced. The correct lowering matched through both compilers.
+
+On WARP 10.0.26100.9818 and on an AMD Radeon RX 6600 (driver 32.0.21045.29003), all 40 draws matched through FXC `ps_5_1` and DXC `ps_6_0`, and all 20 mutated draws read their mutated words. Tests: `startup_gfx2hlsl_int3_alu_controls`, `startup_gfx2hlsl_int3_alu_warp` and `startup_gfx2hlsl_int3_alu_hardware`.
+
 ## Startup translator: per-lane bit operations
 
 `tools/startup/gfx2hlsl.py` now lowers six gfx1013 per-lane bit operations that it used to refuse: `v_bfe_i32`, `v_bcnt_u32_b32`, `v_ffbl_b32`, `v_ffbh_u32`, `v_ffbh_i32` and `v_bfrev_b32`. They become single HLSL expressions, so no helper function is added to the output: `countbits(a) + b`, `firstbitlow(a)`, `reversebits(a)`, and, for the two high scans, `a == 0u ? 0xffffffffu : 31u - firstbithigh(a)` (the signed form scans `~a` for a negative value and reads 0xffffffff for 0 and -1). `v_bfe_i32` takes the offset from bits 4:0 of source 1 and the width from bits 4:0 of source 2, reads 0 for a width of 0, and sign-extends the field from its top bit; when offset plus width passes 32, the bits above bit 31 repeat bit 31, which is an arithmetic shift of the whole word. The formulas and edge cases are the ones `tools/pixel_aot.py` already draws on WARP. `v_bfe_i32` and `v_bcnt_u32_b32` exist only as VOP3 on gfx1013 (llvm-mc 19 rejects `_e32`); the other four assemble in both `_e32` and `_e64`. Source modifiers, `clamp`, output modifiers, `op_sel` and a wrong operand count are refused with `Unsupported`; the operand count is now checked for every integer operation in this table, where a missing operand used to raise `IndexError`. Not lowered here: the 64-bit carry forms, `v_bfm_b32`, the 24-bit multiplies and `v_alignbit_b32`.

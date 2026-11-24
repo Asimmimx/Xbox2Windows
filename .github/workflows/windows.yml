@@ -72,6 +72,7 @@ jobs:
               (["tests/startup_image_sample_l_check.py", "binary", "llvm-mc-15"], {}),
               (["tests/startup_image_sample_c_check.py", "binary", "llvm-mc-15"], {}),
               (["tests/startup_image_3d_check.py", "binary", "llvm-mc-15"], {}),
+              (["tests/startup_gfx2hlsl_int3_alu_check.py", "binary", "llvm-mc-15"], {}),
               (["tests/startup_image_load_mip_check.py", "--llvm-mc", "llvm-mc-15"], {}),
               (["tests/startup_image_2d_array_check.py", "binary", "llvm-mc-15"], {}),
               (["tests/startup_flat_param_check.py", "binary", "llvm-mc-15"], {}),
@@ -173,6 +174,7 @@ jobs:
             tests/startup_host_cpu_check.py \
             tests/startup_gfx2hlsl_capture_check.py \
             tests/startup_translator_check.py \
+            tests/startup_gfx2hlsl_int3_alu_check.py \
             tests/startup_gfx2hlsl_smem_offset_check.py \
             tests/startup_triage_run_check.py \
             tests/startup_run_ps1_check.py \
