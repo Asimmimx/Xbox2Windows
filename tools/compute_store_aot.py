@@ -76,6 +76,13 @@ FLOAT_INLINE = {
     "-2.0": 0xc0000000, "4.0": 0x40800000, "-4.0": 0xc0800000, "0.15915494": 0x3e22f983,
 }
 FLOAT_SOURCE = r"(s\d+|v\d+|-?\d+\.\d+|0x[0-9a-f]+|-?\d+)"
+# The VOP3 (_e64) spelling of the same four operations takes any FLOAT_SOURCE in either slot, and a register source
+# may carry the input modifiers as LLVM prints them: -r (neg), |r| (abs) and -|r| (abs, then neg). Both modifiers act
+# on the sign bit only, so they lower to bit operations on the word and never change a NaN payload or a denormal.
+# A modifier on a constant, clamp and the output multipliers are refused.
+FLOAT_E64_SOURCE = r"(-?\|[sv]\d+\||-?[sv]\d+|-?\d+\.\d+|0x[0-9a-f]+|-?\d+)"
+FLOAT_MODIFIERS = {(False, False): "{0}", (True, False): "({0} ^ 0x80000000u)", (False, True): "({0} & 0x7fffffffu)",
+                   (True, True): "({0} | 0x80000000u)"}
 SALU_SOURCE = r"(s\d+|-?\d+|0x[0-9a-f]+)"
 ALU_SOURCE = r"(s\d+|v\d+|-?\d+|0x[0-9a-f]+)"
 # Results are inline HLSL expressions; a longer one is rejected instead of growing without bound.
@@ -193,6 +200,15 @@ def float_word(token, scalar, vector, pending):
     if isinstance(word, int) and ((word >> 23) & 0xff == 0xff or ((word >> 23) & 0xff == 0 and word & 0x7fffff)):
         return None
     return word
+
+
+def float_e64_source(token, scalar, vector, pending):
+    """The HLSL word of a VOP3 binary32 source, or None: float_word with its neg and abs modifiers applied."""
+    m = re.fullmatch(r"(-)?(?:\|([sv]\d+)\||([sv]\d+))", token)
+    word = float_word(m[2] or m[3] if m else token, scalar, vector, pending)
+    if word is None:
+        return None
+    return FLOAT_MODIFIERS[(bool(m and m[1]), bool(m and m[2]))].format(hlsl_word(word))
 
 
 def vector_operands(line):
@@ -1139,6 +1155,15 @@ def lower(instructions, group, *, table_reg, descriptor_offset=None, group_reg=N
             if dst > 255 or None in words:
                 raise ValueError("Unverified float operand")
             expression = FALU[op].format(*map(hlsl_word, words))
+            if len(expression) > ALU_EXPRESSION_LIMIT:
+                raise ValueError("ALU expression too large")
+            vector[dst] = ("alu", expression)
+        elif m := re.fullmatch(rf"v_(add|sub|subrev|mul)_f32_e64 v(\d+), {FLOAT_E64_SOURCE}, {FLOAT_E64_SOURCE}", line):
+            dst = int(m[2])
+            sources = [float_e64_source(token, scalar, vector, pending) for token in m.groups()[2:]]
+            if dst > 255 or None in sources:
+                raise ValueError("Unverified float operand")
+            expression = FALU[f"v_{m[1]}_f32_e32"].format(*sources)
             if len(expression) > ALU_EXPRESSION_LIMIT:
                 raise ValueError("ALU expression too large")
             vector[dst] = ("alu", expression)

@@ -1212,8 +1212,9 @@ def f32_controls():
         (unsupported + "v_mac_f32_e32", (("v_mul_f32_e32 v6, v2, v6", "v_mac_f32_e32 v6, v2, v5"),)),
         (unsupported + "v_max_f32_e32", (("v_mul_f32_e32 v6, v2, v6", "v_max_f32_e32 v6, v2, v6"),)),
         (unsupported + "v_mul_legacy_f32_e32", (("v_mul_f32_e32 v6, v2, v6", "v_mul_legacy_f32_e32 v6, v2, v6"),)),
-        # The VOP3 spelling, output and input modifiers, an SGPR as the second source and a register range.
-        (unsupported + "v_add_f32_e64", (("v_add_f32_e32 v4, v2, v3", "v_add_f32_e64 v4, v2, v3"),)),
+        # Output and input modifiers on the VOP2 spelling, an SGPR as its second source and a register range. The
+        # VOP3 spelling and its modifiers are checked in compute_f32_e64_modifiers_check.py; clamp stays refused there.
+        (unsupported + "v_add_f32_e64", (("v_add_f32_e32 v4, v2, v3", "v_add_f32_e64 v4, v2, v3 clamp"),)),
         (unsupported + "v_add_f32_e32", (("v_add_f32_e32 v4, v2, v3", "v_add_f32_e32 v4, v2, v3 clamp"),)),
         (unsupported + "v_add_f32_e32", (("v_add_f32_e32 v4, v2, v3", "v_add_f32_e32 v4, -v2, v3"),)),
         (unsupported + "v_add_f32_e32", (("v_add_f32_e32 v4, v2, v3", "v_add_f32_e32 v4, |v2|, v3"),)),
