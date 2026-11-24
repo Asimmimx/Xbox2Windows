@@ -1643,6 +1643,16 @@ if(EXISTS "${INTAKE_PYTHON}")
     # gfx2hlsl refuses a binary32 or integer vector operation with a source too few or too many.
     add_test(NAME startup_gfx2hlsl_operand_count COMMAND "${INTAKE_PYTHON}" -B
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/startup_gfx2hlsl_operand_count_check.py")
+    # gfx2hlsl binary32 rounding (VEC_F floor, ceil, trunc, fract, rndne): translation controls, then a draw of
+    # the translated pairs with reference words and one mutated lowering per operation.
+    add_test(NAME startup_gfx2hlsl_float_round_controls COMMAND "${INTAKE_PYTHON}" -B
+        "${CMAKE_SOURCE_DIR}/tests/startup_gfx2hlsl_float_round_check.py")
+    foreach(adapter IN ITEMS warp hardware)
+        add_test(NAME startup_gfx2hlsl_float_round_${adapter} COMMAND "${INTAKE_PYTHON}" -B
+            "${CMAKE_SOURCE_DIR}/tests/startup_gfx2hlsl_float_round_check.py" draw "${DXC_EXECUTABLE}"
+            "$<TARGET_FILE:offscreen_check>" ${adapter} $<$<BOOL:${STARTUP_FXC}>:${STARTUP_FXC}>)
+        set_tests_properties(startup_gfx2hlsl_float_round_${adapter} PROPERTIES TIMEOUT 300 SKIP_RETURN_CODE 77)
+    endforeach()
     # VOP1/VOP2 sub-dword addressing (SDWA) in the translator (#1141), checked against the pixel AOT
     # lowering of the same selections.
     add_test(NAME startup_gfx2hlsl_sdwa COMMAND "${INTAKE_PYTHON}" -B

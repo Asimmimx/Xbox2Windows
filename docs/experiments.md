@@ -10625,6 +10625,21 @@ Not covered: a D3D12 readback of a translated comparison draw. The compared resu
 
 The binary32 table (`VEC_F`) applies the same operand-count rule. Before this change, a form one source short (`v_add_f32 v1, v2`) raised `IndexError` in `Stage.one` instead of `Unsupported`. A form with one source too many (`v_med3_f32 v1, v2, v3, v4, v5`) translated with the extra source dropped. `tests/startup_gfx2hlsl_operand_count_check.py` (`startup_gfx2hlsl_operand_count`) checks every operation of both tables: one source fewer and one source more are refused, and the exact count translates. It also checks that the constant and accumulator forms (`v_fmac_f32`, `v_mac_f32`, `v_fmamk_f32`, `v_fmaak_f32`, `v_madmk_f32`, `v_madak_f32`) keep translating with their usual operands. As a control, it loads the translator with the new `VEC_F` guard removed and requires both old failures to come back.
 
+## Startup translator: binary32 rounding
+
+No check ran the rounding operations of the `VEC_F` table in `tools/startup/gfx2hlsl.py` before: `v_floor_f32`, `v_ceil_f32`, `v_trunc_f32`, `v_fract_f32` and `v_rndne_f32`. They lower to HLSL `floor`, `ceil`, `trunc`, `frac` and `round`. `tests/startup_gfx2hlsl_float_round_check.py` draws them with the shared runner `tests/startup_gfx2hlsl_lane_alu.py`, one operation per lane on flat inputs, alternating the `_e32` and `_e64` spellings, and compares the four result words exactly.
+
+The references follow the AMD RDNA 2 ISA reference:
+- A zero result keeps the sign of the source: `ceil(-0.75)`, `trunc(-0.75)` and `rndne(-2^-30)` are -0.
+- `v_rndne_f32` rounds halves to even: 2.5 → 2, 3.5 → 4, -2.5 → -2, 1000000.5 → 1000000.
+- `v_fract_f32` is `x - floor(x)`, capped at the largest binary32 below 1.0. With -2^-30 the exact difference rounds to 1.0, and the instruction gives `0x3f7fffff`.
+
+The inputs also include the binary32 just below 0.5 and 8388607.5.
+
+Each operation has a wrong lowering whose first draw must read its own mutated words: floor and ceil exchanged, floor for trunc, `x - trunc(x)` for frac, and trunc for round.
+
+On WARP 10.0.26100.9818 and on an AMD Radeon RX 6600 (driver 32.0.21045.29003), all 20 draws matched through FXC `ps_5_1` and DXC `ps_6_0`, and all 10 mutated draws read their mutated words. On both adapters, HLSL `frac` of -2^-30 read `0x3f7fffff`, so the lowering kept the cap on these two adapters without an explicit comparison. Tests: `startup_gfx2hlsl_float_round_controls`, `startup_gfx2hlsl_float_round_warp` and `startup_gfx2hlsl_float_round_hardware`.
+
 ## Startup translator: SMEM offset operands
 
 `tools/startup/gfx2hlsl.py` accepts these offset operands for the scalar memory loads ([issue #1674](https://github.com/R0Y00/Xbox2Windows/issues/1674)):
