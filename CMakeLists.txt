@@ -1741,6 +1741,17 @@ if(EXISTS "${INTAKE_PYTHON}")
             "$<TARGET_FILE:offscreen_check>" ${adapter} $<$<BOOL:${STARTUP_FXC}>:${STARTUP_FXC}>)
         set_tests_properties(startup_inline_sampler_${adapter} PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77)
     endforeach()
+    # gfx2hlsl binary32 reciprocal, roots, exp2 and log2 (VEC_F) on exact inputs: translation controls, then a
+    # draw of the translated pairs with reference words and one mutated lowering per operation.
+    add_test(NAME startup_gfx2hlsl_float_transcendental_controls COMMAND "${INTAKE_PYTHON}" -B
+        "${CMAKE_SOURCE_DIR}/tests/startup_gfx2hlsl_float_transcendental_check.py")
+    foreach(adapter IN ITEMS warp hardware)
+        add_test(NAME startup_gfx2hlsl_float_transcendental_${adapter} COMMAND "${INTAKE_PYTHON}" -B
+            "${CMAKE_SOURCE_DIR}/tests/startup_gfx2hlsl_float_transcendental_check.py" draw "${DXC_EXECUTABLE}"
+            "$<TARGET_FILE:offscreen_check>" ${adapter} $<$<BOOL:${STARTUP_FXC}>:${STARTUP_FXC}>)
+        set_tests_properties(startup_gfx2hlsl_float_transcendental_${adapter} PROPERTIES TIMEOUT 300
+            SKIP_RETURN_CODE 77)
+    endforeach()
     add_test(NAME startup_xg_bc7_layout COMMAND "${INTAKE_PYTHON}" -B
         "${CMAKE_SOURCE_DIR}/tests/startup_xg_bc7_layout_check.py" "$<TARGET_FILE:startup_stub_xg_xs>")
     set_tests_properties(startup_xg_bc7_layout PROPERTIES TIMEOUT 30

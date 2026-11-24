@@ -10855,6 +10855,20 @@ The [MASM fixture](../tests/cpu/vex_parity.asm) and [differential check](../test
 ctest --preset release --no-tests=error -R '^cpu_aot_vex_parity$' -V
 ```
 
+## Startup translator: reciprocal, roots, exp2 and log2
+
+The `VEC_F` table of `tools/startup/gfx2hlsl.py` lowers six operations to HLSL with no check that ran them before: `v_rcp_f32` and `v_rcp_iflag_f32` to `1.0 / x`, `v_sqrt_f32` to `sqrt`, `v_rsq_f32` to `rsqrt`, `v_exp_f32` to `exp2` and `v_log_f32` to `log2`. `tests/startup_gfx2hlsl_float_transcendental_check.py` draws them with the shared runner `tests/startup_gfx2hlsl_lane_alu.py`. Each draw applies one operation per lane on flat inputs, alternates the `_e32` and `_e64` spellings, and compares the four result words exactly.
+
+Every input is a power of two, or 0 and 9 for the square root, so every result is exact. The check therefore tests which function each operation is lowered to and the base 2 of `v_exp_f32` and `v_log_f32`. It does not test how many ulps an adapter's approximation may be off.
+
+Each operation has a wrong lowering whose first draw must read its own mutated words:
+- `2.0 / x` for the reciprocals;
+- sqrt and rsqrt exchanged;
+- the exponent off by one;
+- the logarithm plus one.
+
+On WARP 10.0.26100.9818 and on an AMD Radeon RX 6600 (driver 32.0.21045.29003), all 24 draws matched through FXC `ps_5_1` and DXC `ps_6_0`, and all 12 mutated draws read their mutated words. `v_sin_f32` and `v_cos_f32` are not covered: their results at the few exact points depend on the approximation. Tests: `startup_gfx2hlsl_float_transcendental_controls`, `startup_gfx2hlsl_float_transcendental_warp` and `startup_gfx2hlsl_float_transcendental_hardware`.
+
 ## Startup root constant buffer views
 
 Command-list slot 42 records the address of a root parameter declared as a CBV, so a translated shader reading through its root pointer sees it. The fixture (`tests/startup_root_cbv.cpp`, driven by `tests/startup_root_cbv_check.py`) is synthetic only: it uses generated command streams and no title data, and the slot number is derived from the desktop order and the console shift, not seen in a title log. It checks a bound call, an unbound call, a null overwrite that clears the slot, a wrong-type call that is ignored with `root CBV N ignored`, a redundant root bind that preserves the address, and a signature switch that clears it. Details are in [startup-runtime.md](startup-runtime.md#root-constant-buffer-views).
