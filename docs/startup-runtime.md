@@ -2959,7 +2959,8 @@ check only:
 - Argument checks (`src/startup_stubs/list_copy_texture.h`): footprint on both sides, empty or inverted box,
   source and destination bounds, row pitch (multiple of 256), offset (multiple of 512), footprint end inside
   the buffer (includes the destination origin, the source box origin and the footprint-height slice stride),
-  block alignment, every multiply and add in the footprint arithmetic checked for wrapping.
+  block alignment, every multiply and add in the footprint arithmetic checked for wrapping. Block-compressed
+  bounds are whole 4x4 blocks, as in D3D12: a 2x2 or 1x1 mip takes the 4x4 footprint GetCopyableFootprints gives it.
 - Subresource index: `mip + slice * mips + plane * mips * array_size` must lie inside the resource's
   `mips * array_size * planes`; a mip-only modulo would read an out-of-range slice as mip 0
   (`bad_subresource`). A planar format (more than one plane) is refused (`planar_unsupported`).
