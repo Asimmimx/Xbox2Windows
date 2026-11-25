@@ -77,6 +77,7 @@ int main(int argc, char** argv)
            Verdict::bad_alignment, "bc 2x2 mip, 2x2 box");
     expect(check(texture(6, 6, 4), 0, 0, 0, texture(6, 6, 4), &(const Box&)Box{0, 0, 0, 6, 6, 1}), Verdict::bad_alignment, "bc 6x6 mip, 6x6 box");
     expect(check(texture(6, 6, 4), 0, 0, 0, texture(6, 6, 4), &(const Box&)Box{0, 0, 0, 6, 8, 1}), Verdict::bad_alignment, "bc 6x6 mip, 6x8 box");
+    expect(check(texture(6, 6, 4), 0, 0, 0, texture(6, 6, 4), &(const Box&)Box{0, 0, 0, 8, 6, 1}), Verdict::bad_alignment, "bc 6x6 mip, 8x6 box");
     expect(check(texture(6, 6, 4), 0, 0, 0, texture(6, 6, 4), &(const Box&)Box{0, 0, 0, 8, 8, 1}), Verdict::ok, "bc 6x6 mip, 8x8 box");
     expect(check(texture(64, 64, 4), 0, 0, 0, texture(64, 64, 4), &(const Box&)Box{4, 8, 0, 12, 16, 1}), Verdict::ok, "bc inner whole-block box");
 
