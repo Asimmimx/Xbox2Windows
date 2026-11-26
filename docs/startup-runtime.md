@@ -2736,7 +2736,8 @@ longer exhausts the heap. While nothing has been freed the offsets are the ones 
 
 - A block is aligned in address (a power of two, 16 at least; 0, anything below 16 and a value that is not a power of two
   all mean 16). Size and alignment are 32 bits. `ApuCreateHeap` creates and publishes the heap under one lock, so
-  competing first calls cannot reset a heap that already has live blocks.
+  competing first calls cannot reset a heap that already has live blocks. A heap whose 64 KiB-rounded size
+  exceeds 4 GiB is refused with `E_INVALIDARG` without committing memory, so every block fits the APU range.
 - Null or non-writable output (`virtual_address` or optional `apu_address`) is `E_POINTER` without
   allocating; size 0 is `E_INVALIDARG`; no room, an offset past 32 bits, or a full extent table is
   `E_OUTOFMEMORY`. A refused call leaves the heap and the optional APU-address output as they were,

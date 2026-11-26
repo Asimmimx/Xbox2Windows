@@ -300,6 +300,12 @@ void concurrent()
 // block that overlaps a live one, or leave a live block unfreeable.
 void first_creation(CreateFn create)
 {
+    // A heap that would cross 4 GiB by one byte (rounded up to 64 KiB) is refused before any memory is
+    // committed and leaves no heap behind; the creations below still succeed.
+    check(create(0xFFFFFFFFull, 2) == invalid, "heap crossing 4 GiB by one byte is refused");
+    check(create(0xFFFFFFFFull, 0xFFFFFFFFull) == invalid, "two maximal 32-bit sizes are refused");
+    void* refused = nullptr;
+    check(take(&refused, 64) == no_memory && !refused, "refused ApuCreateHeap leaves no heap");
     constexpr unsigned callers = 4;
     std::atomic<bool> go{false};
     std::atomic<int> bad{0};

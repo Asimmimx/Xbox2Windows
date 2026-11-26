@@ -24,6 +24,7 @@ bool permissive() noexcept { return x2w_local::env_on("X2W_AUDIO_PERMISSIVE"); }
 // a freed extent is merged with free neighbours. The table is static: when it is full a request that
 // needs a split fails like an exhausted heap. All state is guarded by heap_lock.
 constexpr u64 heap_start = 0x10000;  // APU address 0 stays unused
+constexpr u64 heap_max_bytes = 0x100000000ull;  // the APU address space: 4 GiB
 constexpr std::size_t max_extents = 4096;
 struct Extent {
     u64 start, size;
@@ -176,8 +177,12 @@ extern "C" __declspec(noinline) long ApuCreateHeap(u64 rcx, u64 rdx, u64 r8, u64
     AcquireSRWLockExclusive(&heap_lock);
     if (!heap_base) {
         const u64 bytes = ((cached + non_cached) + 0xFFFF) & ~u64{0xFFFF};
-        void* memory = VirtualAlloc(nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (memory) {
+        // The whole heap must be APU-addressable (offsets below 4 GiB), so every extent, tail included, is
+        // representable. A larger request is refused up front without committing memory.
+        void* memory = bytes > heap_max_bytes ? nullptr : VirtualAlloc(nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (bytes > heap_max_bytes) {
+            hr = static_cast<long>(0x80070057);  // E_INVALIDARG
+        } else if (memory) {
             heap_bytes = bytes;
             heap_reset();
             heap_base = static_cast<unsigned char*>(memory);
