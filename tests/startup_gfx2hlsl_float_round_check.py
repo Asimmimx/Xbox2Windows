@@ -60,7 +60,7 @@ MUTATIONS = {
     'v_floor_f32': (r'U\(floor\(', r'U(ceil(', signed_zero(math.ceil)),
     'v_ceil_f32': (r'U\(ceil\(', r'U(floor(', signed_zero(math.floor)),
     'v_trunc_f32': (r'U\(trunc\(', r'U(floor(', signed_zero(math.floor)),
-    'v_fract_f32': (r'U\(frac\(F\((v\d+)\)\)\)', r'U(F(\1) - trunc(F(\1)))', lambda a: f(v(a) - math.trunc(v(a)))),
+    'v_fract_f32': (r'U\(fract32\(F\((v\d+)\)\)\)', r'U(F(\1) - trunc(F(\1)))', lambda a: f(v(a) - math.trunc(v(a)))),
     'v_rndne_f32': (r'U\(round\(', r'U(trunc(', signed_zero(math.trunc)),
 }
 BODY = {
