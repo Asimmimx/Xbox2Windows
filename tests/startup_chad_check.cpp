@@ -23,6 +23,8 @@ using SubmitCommandFn = long(__cdecl*)(u64, u64, u64, u64);
 
 constexpr long hr_ok = 0;
 constexpr long hr_pointer = static_cast<long>(0x80004003);  // E_POINTER
+constexpr long hr_invalidarg = static_cast<long>(0x80070057);  // E_INVALIDARG
+constexpr long hr_no_device_resources = static_cast<long>(0x8AC810A2);  // XDSP_E_NO_DEVICE_RESOURCES
 constexpr DWORD trap_activate_exit = 0xE2570200u;
 constexpr DWORD trap_connect_exit = 0xE2570201u;
 constexpr DWORD trap_deactivate_exit = 0xE2570202u;
@@ -180,14 +182,59 @@ int main(int argc, char** argv)
         check(false, "VirtualAlloc straddling negative control");
     }
 
-    // Positive controls in permissive mode: lifecycle exports succeed and populate handle.
+    // XDspActivate reports the documented failure and clears both outputs; the caller below gates its
+    // first submit on activation success, so no submit happens and the sequence keeps its sentinel.
+    check(activate(0x11, 0x22, 0x33, 0x44) == hr_pointer, "XDspActivate(unwritable outputs) -> E_POINTER");
+    void* status_out = reinterpret_cast<void*>(0x1);
+    void* stream_out = reinterpret_cast<void*>(0x2);
+    check(activate(0x11, 0x22, reinterpret_cast<u64>(&status_out), reinterpret_cast<u64>(&stream_out)) ==
+              hr_no_device_resources && status_out == nullptr && stream_out == nullptr,
+          "XDspActivate -> XDSP_E_NO_DEVICE_RESOURCES with both outputs cleared");
+    check(activate(0x11, 0x22, 0, reinterpret_cast<u64>(&stream_out)) == hr_pointer,
+          "XDspActivate(null status*) -> E_POINTER");
+    check(activate(0x11, 0x22, reinterpret_cast<u64>(&status_out), 0) == hr_pointer,
+          "XDspActivate(null stream*) -> E_POINTER");
+
+    // The connect out-handle still succeeds and publishes a handle (#1871).
     void* handle = nullptr;
-    check(activate(0x11, 0x22, 0x33, 0x44) == hr_ok, "XDspActivate returns S_OK");
     check(connect(0x1000, 0x60000, 30, 0x80, 1, &handle) == hr_ok && handle != nullptr,
           "XDspConnectWithMaximumStreamLimit returns S_OK and populates handle");
-    check(submit(reinterpret_cast<u64>(handle), 0x1234, 0, 0) == hr_ok, "XDspSubmitCommand returns S_OK");
-    check(deactivate(reinterpret_cast<u64>(handle), 0, 0, 0) == hr_ok, "XDspDeactivate returns S_OK");
-    check(disconnect(reinterpret_cast<u64>(handle), 0, 0, 0) == hr_ok, "XDspDisconnect returns S_OK");
+
+    // Submit refuses null and unknown handles without returning a sequence, and a known handle still
+    // cannot run a command, so the caller value survives every failure path.
+    unsigned sequence = 0xdeadbeefu;
+    check(submit(0, 0x1234, reinterpret_cast<u64>(&sequence), 0) == hr_invalidarg && sequence == 0xdeadbeefu,
+          "XDspSubmitCommand(null handle) -> E_INVALIDARG, sequence preserved");
+    check(submit(reinterpret_cast<u64>(handle) + 4, 0x1234, reinterpret_cast<u64>(&sequence), 0) == hr_invalidarg &&
+              sequence == 0xdeadbeefu,
+          "XDspSubmitCommand(unknown handle) -> E_INVALIDARG, sequence preserved");
+    check(submit(reinterpret_cast<u64>(handle), 0x1234, reinterpret_cast<u64>(&sequence), 0) == hr_no_device_resources &&
+              sequence == 0xdeadbeefu,
+          "XDspSubmitCommand(known handle) -> XDSP_E_NO_DEVICE_RESOURCES, sequence preserved");
+
+    // Synthetic caller: a title that gates its first submit on activation success never reaches submit.
+    unsigned gated_sequence = 0;
+    if (activate(0x11, 0x22, reinterpret_cast<u64>(&status_out), reinterpret_cast<u64>(&stream_out)) == hr_ok)
+        submit(reinterpret_cast<u64>(handle), 0x1234, reinterpret_cast<u64>(&gated_sequence), 0);
+    check(gated_sequence == 0, "caller gated on activation success never submits");
+
+    // Deactivate and disconnect write nothing back; they refuse null and unknown handles instead of
+    // reporting them as released, and release only the handle connect published.
+    check(deactivate(0, 0, 0, 0) == hr_invalidarg, "XDspDeactivate(null handle) -> E_INVALIDARG");
+    check(deactivate(reinterpret_cast<u64>(handle) + 4, 0, 0, 0) == hr_invalidarg,
+          "XDspDeactivate(unknown handle) -> E_INVALIDARG");
+    check(disconnect(0, 0, 0, 0) == hr_invalidarg, "XDspDisconnect(null handle) -> E_INVALIDARG");
+    check(disconnect(reinterpret_cast<u64>(handle) + 4, 0, 0, 0) == hr_invalidarg,
+          "XDspDisconnect(unknown handle) -> E_INVALIDARG");
+
+    // Synthetic caller: teardown of the stream that the failed activation cleared is not reported as done.
+    stream_out = reinterpret_cast<void*>(0x2);
+    activate(0x11, 0x22, reinterpret_cast<u64>(&status_out), reinterpret_cast<u64>(&stream_out));
+    check(deactivate(reinterpret_cast<u64>(stream_out), 0, 0, 0) != hr_ok,
+          "caller deactivating the stream a failed activation cleared is refused");
+
+    check(deactivate(reinterpret_cast<u64>(handle), 0, 0, 0) == hr_ok, "XDspDeactivate(known handle) returns S_OK");
+    check(disconnect(reinterpret_cast<u64>(handle), 0, 0, 0) == hr_ok, "XDspDisconnect(known handle) returns S_OK");
 
     if (!log_path.empty()) {
         const std::string log_text = read_file_bytes(log_path.c_str());
@@ -211,6 +258,9 @@ int main(int argc, char** argv)
                   log_text.find("XDspDeactivate") != std::string::npos &&
                   log_text.find("XDspDisconnect") != std::string::npos,
               "permissive lifecycle exports logged");
+        check(log_text.find("x2w-audio XDspDeactivate handle=0x0 -> E_INVALIDARG") != std::string::npos &&
+                  log_text.find("x2w-audio XDspDisconnect handle=0x0 -> E_INVALIDARG") != std::string::npos,
+              "permissive deactivate and disconnect refusals logged");
         DeleteFileW(log_path.c_str());
     }
 
